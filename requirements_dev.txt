@@ -1,0 +1,8 @@
+-r requirements.txt
+black==24.10.0
+django-extensions==3.2.3
+autoflake==2.3.1
+isort==5.13.2
+flake8==7.1.1
+pre-commit==4.2.0
+psycopg2-binary==2.9.11

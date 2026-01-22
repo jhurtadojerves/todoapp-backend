@@ -1,0 +1,19 @@
+FROM python:3.13.3-slim-bullseye
+
+RUN python --version
+
+COPY . /app/
+WORKDIR /app
+
+# OS dependencies
+RUN apt-get update && apt-get install -y libpq-dev gcc locales && \
+    sed -i 's/^# *es_ES.UTF-8 UTF-8/es_ES.UTF-8 UTF-8/' /etc/locale.gen && \
+    locale-gen es_ES.UTF-8
+
+ENV LANG=es_ES.UTF-8
+ENV LC_ALL=es_ES.UTF-8
+
+# Install Python dependencies
+RUN pip install -U pip && pip install -r requirements_dev.txt
+
+EXPOSE 8080

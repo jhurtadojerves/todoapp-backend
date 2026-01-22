@@ -1,0 +1,8 @@
+repos:
+    - repo: local
+      hooks:
+          - id: lint-check
+            name: Lint check
+            entry: make lint-check
+            language: system
+            stages: [pre-commit]
