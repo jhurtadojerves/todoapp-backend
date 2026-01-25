@@ -9,17 +9,6 @@ services:
       POSTGRES_DB: app
     ports:
       - "5432:5432"
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin4_container
-    restart: always
-    ports:
-      - "8888:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: root@test.com
-      PGADMIN_DEFAULT_PASSWORD: root
-    volumes:
-      - .docker/.volumes/pgadmin/pgadmin-data:/var/lib/pgadmin
   app:
     build:
       context: .

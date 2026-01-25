@@ -17,6 +17,9 @@ class User(AbstractUser):
         auto_now=True,
         help_text="Datetime on which the user was last modified",
     )
+    email = models.EmailField(verbose_name="email address", unique=True)
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]
 
     @property
     def profile(self) -> Optional["Profile"]:
