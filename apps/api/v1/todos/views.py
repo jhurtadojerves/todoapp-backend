@@ -8,6 +8,7 @@ from apps.api.v1.todos.idempotency import IdempotentCreateMixin
 from apps.api.v1.todos.permissions import (
     IsBoardMember,
     IsBoardOwnerForUnsafeMethods,
+    IsCommentAuthorOrBoardOwnerForUnsafeMethods,
     boards_for_user,
 )
 from apps.api.v1.todos.serializers import (
@@ -194,7 +195,6 @@ class TaskListCreateView(IdempotentCreateMixin, generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["status", "sprint", "assigned_to"]
-    idempotency_model = Task
 
     def get_board(self):
         if getattr(self, "swagger_fake_view", False):
@@ -238,7 +238,6 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
 class CommentListCreateView(IdempotentCreateMixin, generics.ListCreateAPIView):
     serializer_class = CommentSerializer
     permission_classes = [permissions.IsAuthenticated]
-    idempotency_model = Comment
 
     def get_task(self):
         if getattr(self, "swagger_fake_view", False):
@@ -264,7 +263,10 @@ class CommentListCreateView(IdempotentCreateMixin, generics.ListCreateAPIView):
 @extend_schema(tags=["v1/tasks"])
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CommentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [
+        permissions.IsAuthenticated,
+        IsCommentAuthorOrBoardOwnerForUnsafeMethods,
+    ]
     http_method_names = ["get", "patch", "delete"]
 
     def get_queryset(self):

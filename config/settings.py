@@ -161,6 +161,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_RATES": {
         "login": "5/min",
+        "password_validate": "10/min",
     },
 }
 

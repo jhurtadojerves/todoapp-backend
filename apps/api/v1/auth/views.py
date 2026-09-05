@@ -56,6 +56,8 @@ class LogoutView(APIView):
 class PasswordValidationView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_validate"
 
     def post(self, request):
         serializer = PasswordValidationSerializer(data=request.data)
