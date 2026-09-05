@@ -5,7 +5,6 @@ from django.contrib.auth import get_user_model
 from apps.users.dtos.user import UserData
 from apps.users.services.profile import ProfileData, ProfileService
 
-
 User = get_user_model()
 ProfileServiceType = Type[ProfileService]
 
@@ -27,6 +26,8 @@ class UserService:
         user = User(**payload)
         user.set_password(password)
         user.save()
-        cls.profile_service_class.create(user=user, profile_data=profile_data)
+        cls.profile_service_class.create(
+            user=user, profile_data=profile_data or ProfileData()
+        )
 
         return user

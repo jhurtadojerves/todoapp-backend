@@ -1,11 +1,12 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from apps.users.dtos.profile import ProfileData
 from apps.users.dtos.user import UserData
 from apps.users.models import Profile
-from apps.users.dtos.profile import ProfileData
 from apps.users.services.user import UserService
-
 
 User = get_user_model()
 
@@ -50,6 +51,23 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user_data = UserData(**validated_data)
 
         return UserService.register(user_data=user_data, profile_data=profile_payload)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        password = attrs.get("password")
+        if password:
+            user_fields = ["username", "email", "first_name", "last_name"]
+            user_kwargs = {
+                field: attrs.get(field)
+                for field in user_fields
+                if attrs.get(field) is not None
+            }
+            user_instance = User(**user_kwargs)
+            try:
+                validate_password(password, user=user_instance)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError({"password": exc.messages})
+        return attrs
 
 
 class UserListSerializer(serializers.ModelSerializer):

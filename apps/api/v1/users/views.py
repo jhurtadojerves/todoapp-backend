@@ -1,10 +1,7 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions
 
-from apps.api.v1.users.serializers import (
-    UserListSerializer,
-    UserRegistrationSerializer,
-)
+from apps.api.v1.users.serializers import UserListSerializer, UserRegistrationSerializer
 from apps.users.models import User
 
 
@@ -12,6 +9,7 @@ from apps.users.models import User
 class UserRegistrationAPIView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
 
 @extend_schema(tags=["v1/users"])

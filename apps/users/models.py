@@ -2,6 +2,7 @@
 
 # Django
 from typing import Optional
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
@@ -34,4 +35,4 @@ class Profile(models.Model):
     avatar = models.ImageField(upload_to="avatars/", blank=True, null=True)
 
     def __str__(self) -> str:
-        return f"Profile of {self.user.username}"
+        return f"Profile of {self.user.email}"

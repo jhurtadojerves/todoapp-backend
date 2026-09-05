@@ -27,7 +27,7 @@ SECRET_KEY = "django-insecure-)73incjf@(68mu50m3ehw#fwqpwhdw&jncgw0s4c9@p8roa+o6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").split(",")
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
 
 # Application definition
@@ -41,10 +41,17 @@ BASE_APPS = [
     "django.contrib.staticfiles",
 ]
 
-THIRD_PARTY_APPS = ["rest_framework", "drf_spectacular"]
+THIRD_PARTY_APPS = [
+    "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
+    "corsheaders",
+    "django_filters",
+]
 
 LOCAL_APPS = [
     "apps.users",
+    "apps.todos",
     "apps.api",
 ]
 
@@ -52,6 +59,7 @@ LOCAL_APPS = [
 INSTALLED_APPS = BASE_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -112,6 +120,12 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
+    {
+        "NAME": "apps.users.validators.PasswordComplexityValidator",
+        "OPTIONS": {
+            "min_length": 12,
+        },
+    },
 ]
 
 
@@ -140,6 +154,14 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "5/min",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -149,12 +171,14 @@ SPECTACULAR_SETTINGS = {
     "TAGS": [
         {"name": "v1/auth", "description": "Auth and JWT tokens"},
         {"name": "v1/users", "description": "Users, profiles, and registrations"},
+        {"name": "v1/boards", "description": "Boards, statuses, and sprints"},
+        {"name": "v1/tasks", "description": "Tasks and comments"},
     ],
     "TAG_GROUPS": [
         {
             "name": "v1",
             "description": "Docs API versión 1",
-            "tags": ["v1/auth", "v1/users"],
+            "tags": ["v1/auth", "v1/users", "v1/boards", "v1/tasks"],
         }
     ],
     "SECURITY": [{"BearerAuth": []}],
@@ -175,11 +199,38 @@ SPECTACULAR_SETTINGS = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
 AUTH_USER_MODEL = "users.User"
+
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8081",
+    "exp://192.168.x.x:8081",  # Expo
+]
+
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
