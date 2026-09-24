@@ -1,0 +1,11 @@
+.git
+.docker/.volumes
+.env
+.idea
+*.pyc
+__pycache__
+media
+node_modules
+.venv
+*.mock.py
+*.sql
