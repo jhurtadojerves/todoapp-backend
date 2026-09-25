@@ -1,0 +1,187 @@
+name: Deploy backend
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  DEPLOY_DIR: /opt/todoapp
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14.8-alpine3.18
+        env:
+          POSTGRES_DB: todoapp
+          POSTGRES_USER: todoapp
+          POSTGRES_PASSWORD: todoapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U todoapp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_DB: todoapp
+      POSTGRES_USER: todoapp
+      POSTGRES_PASSWORD: todoapp
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - run: pip install -r requirements_prod.txt
+
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run tests
+        run: python manage.py test
+
+      - name: Check production settings
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings_prod
+          DJANGO_SECRET_KEY: ci-only-dummy-secret-key-not-used-anywhere-0123456789
+          DJANGO_ALLOWED_HOSTS: example.com
+        run: python manage.py check --deploy --fail-level WARNING
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        name: Compute image name
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          echo "image=${REGISTRY}/${repo}:${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "latest=${REGISTRY}/${repo}:latest" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .docker/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ steps.meta.outputs.latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.SERVER_NAME }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      SSH_TARGET: ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}
+      SERVER_NAME: ${{ vars.SERVER_NAME }}
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+          DROPLET_SSH_KNOWN_HOSTS: ${{ secrets.DROPLET_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DROPLET_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DROPLET_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      # Secrets are passed through env (never interpolated into the script) to avoid injection
+      - name: Render .env from GitHub secrets
+        env:
+          APP_IMAGE: ${{ needs.build.outputs.image }}
+          WEB_CONCURRENCY: ${{ vars.WEB_CONCURRENCY || '2' }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          umask 077
+          cat > .env.production <<EOF
+          APP_IMAGE=${APP_IMAGE}
+          SERVER_NAME=${SERVER_NAME}
+          WEB_CONCURRENCY=${WEB_CONCURRENCY}
+          DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+          DJANGO_ALLOWED_HOSTS=${SERVER_NAME}
+          DJANGO_CSRF_TRUSTED_ORIGINS=https://${SERVER_NAME}
+          POSTGRES_DB=${POSTGRES_DB}
+          POSTGRES_USER=${POSTGRES_USER}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          EOF
+
+      - name: Upload stack files
+        run: |
+          ssh "$SSH_TARGET" "mkdir -p ${DEPLOY_DIR}/deploy/nginx"
+          scp docker-compose.prod.yml "$SSH_TARGET:${DEPLOY_DIR}/docker-compose.yml"
+          scp -r deploy/nginx/templates "$SSH_TARGET:${DEPLOY_DIR}/deploy/nginx/"
+          scp .env.production "$SSH_TARGET:${DEPLOY_DIR}/.env"
+          ssh "$SSH_TARGET" "chmod 600 ${DEPLOY_DIR}/.env"
+
+      - name: Pull image, migrate and restart
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The job token is only valid while this job runs, so log in, pull, and log out right away
+          printf '%s' "$GHCR_TOKEN" | ssh "$SSH_TARGET" \
+            "docker login ${REGISTRY} -u ${GITHUB_ACTOR} --password-stdin"
+          ssh "$SSH_TARGET" "cd ${DEPLOY_DIR} && docker compose pull; status=\$?; docker logout ${REGISTRY}; exit \$status"
+
+          ssh "$SSH_TARGET" bash -s <<EOF
+          set -euo pipefail
+          cd ${DEPLOY_DIR}
+          docker compose up -d --wait db
+          docker compose run --rm app python manage.py migrate --noinput
+          docker compose up -d --remove-orphans
+          docker image prune -f
+          EOF
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS -o /dev/null "https://${SERVER_NAME}/api/schema/"; then
+              echo "Deployed ${RELEASE_TAG}"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Smoke test failed" >&2
+          ssh "$SSH_TARGET" "cd ${DEPLOY_DIR} && docker compose ps && docker compose logs --tail=100 app nginx"
+          exit 1

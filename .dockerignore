@@ -9,3 +9,5 @@ node_modules
 .venv
 *.mock.py
 *.sql
+staticfiles
+.github
