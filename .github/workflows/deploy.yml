@@ -168,7 +168,8 @@ jobs:
           set -euo pipefail
           cd ${DEPLOY_DIR}
           docker compose up -d --wait db
-          docker compose run --rm app python manage.py migrate --noinput
+          # -T and </dev/null: this script arrives on stdin, so run must not consume it
+          docker compose run --rm -T app python manage.py migrate --noinput </dev/null
           docker compose up -d --remove-orphans
           docker image prune -f
           EOF
